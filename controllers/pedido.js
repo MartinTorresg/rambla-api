@@ -67,26 +67,49 @@ const eliminarPedido = async (req, res) => {
     }
 };
 
-const exportarDatosAExcel = (datos, nombreHoja, nombreArchivo) => {
+const exportarDatosAExcel = (datos, nombreHoja, nombreArchivo, totalVentas, totalPedidos) => {
     const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(datos);
-    XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
-
-    // Ruta absoluta donde se guardarán los archivos Excel
     const dir = "C:\\Users\\dtimm\\OneDrive\\Escritorio\\rambla\\excels";
 
-    // Si el directorio no existe, créalo.
+    // Asegurarse de que el directorio existe
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
 
-    // Construye la ruta del archivo.
-    const rutaArchivo = path.join(dir, nombreArchivo);
+    // Agregar filas de totales al principio
+    const totales = [
+        { A: 'Venta total:', B: totalVentas.toLocaleString('es-CL') },
+        { A: 'Pedidos totales:', B: totalPedidos.toString() },
+        {}, // fila vacía como separador
+    ];
 
-    // Escribe el archivo en la ruta especificada.
+    // Agregar la fila de encabezados justo antes de los datos
+    const encabezados = [
+        { A: 'Fecha Pedido', B: 'Precio Total' }
+    ];
+
+    // Convertir los datos de pedidos a un formato adecuado para una hoja de Excel
+    const ws = XLSX.utils.json_to_sheet(totales, { origin: 'A1' });
+    XLSX.utils.sheet_add_json(ws, encabezados, { origin: -1, skipHeader: true });
+    XLSX.utils.sheet_add_json(ws, datos, { origin: -1, skipHeader: true });
+
+    // Ajustar el ancho de las columnas si es necesario
+    ws['!cols'] = [{ wch: 20 }, { wch: 15 }];
+
+    // Agregar la hoja al libro de trabajo
+    XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
+
+    // Construir la ruta del archivo y escribir el libro de trabajo en un archivo
+    const rutaArchivo = path.join(dir, nombreArchivo);
     XLSX.writeFile(wb, rutaArchivo);
+
     return rutaArchivo;
 };
+
+
+
+
+
 
 
 const obtenerVentasDelDia = async (req, res) => {
@@ -102,16 +125,21 @@ const obtenerVentasDelDia = async (req, res) => {
             }
         });
 
+
+
         console.log(`Ventas encontradas: ${ventas.length}`);
         const datosParaExcel = ventas.map(pedido => ({
-            FechaPedido: pedido.fechaPedido.toISOString(),
-            PrecioTotal: pedido.precioTotal
-            // Puedes añadir más campos si son necesarios
+            'Fecha Pedido': moment(pedido.fechaPedido).format('YYYY-MM-DD HH:mm'),
+            'Precio Total': pedido.precioTotal.toLocaleString('es-CL')
         }));
 
-        const fechaFormato = fechaInicio.format('YYYYMMDD');
-        const nombreArchivo = `Ventas_${fechaFormato}.xlsx`;
-        const rutaArchivo = exportarDatosAExcel(datosParaExcel, 'Ventas', nombreArchivo);
+
+        const totalVentas = ventas.reduce((acc, pedido) => acc + pedido.precioTotal, 0);
+        const totalPedidos = ventas.length;
+
+        // Luego llama a la función para exportar los datos a Excel
+        const nombreArchivo = `Ventas_${fechaInicio.format('YYYYMMDD')}.xlsx`;
+        const rutaArchivo = exportarDatosAExcel(datosParaExcel, 'Ventas', nombreArchivo, totalVentas, totalPedidos);
 
         console.log(`Archivo generado: ${rutaArchivo}`);
         res.download(rutaArchivo, nombreArchivo, (err) => {
